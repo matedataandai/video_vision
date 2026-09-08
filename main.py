@@ -22,7 +22,7 @@ for cam in cameras:
 import cv2
 
 # Set the index of the camera you want to record from (e.g., 0, 1, 2)
-SELECTED_CAMERA_INDEX = 0
+SELECTED_CAMERA_INDEX = 2
 
 cap = cv2.VideoCapture(SELECTED_CAMERA_INDEX)
 
