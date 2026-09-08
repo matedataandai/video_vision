@@ -5,6 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "ipykernel>=7.3.0",
+    "matplotlib>=3.11.1",
     "opencv-python>=5.0.0.93",
+    "pillow>=12.3.0",
+    "pip>=26.2.1",
     "pyobjc-framework-avfoundation>=12.2.2",
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
 ]
