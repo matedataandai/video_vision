@@ -1,8 +1,7 @@
 import cv2
 from AVFoundation import AVCaptureDevice, AVMediaTypeVideo
-from visionmodel import VisionModel,VisionModel2
+from visionmodel import VisionModel2
 
-vision_model = VisionModel()
 vision_model2 = VisionModel2()
 
 def get_macos_camera_list():

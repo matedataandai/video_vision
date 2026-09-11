@@ -117,10 +117,8 @@ class VisionModel():
 class VisionModel2():
     def crop_based_angle(self, image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
         # Determine angle using Radon transform
         angle = determine_skew(gray)
-
         # Rotate image using OpenCV
         (h, w) = image.shape[:2]
         center = (w // 2, h // 2)
