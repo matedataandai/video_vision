@@ -1,8 +1,11 @@
+from email.mime import image
+
 import torch
 import torchvision.models as models
 from torchvision import transforms
 import numpy as np
 import cv2
+from deskew import determine_skew
 
 def crop_largest_rect(img, angle_deg, orig_w, orig_h):
     """Calculates the maximum interior rectangle inside a rotated image to remove black corners."""
@@ -37,12 +40,12 @@ def crop_largest_rect(img, angle_deg, orig_w, orig_h):
 class VisionModel():
     def __init__(self):
         self.model = models.resnet50(pretrained=True)
-        self.model.fc = torch.nn.Linear(self.model.fc.in_features, 14*2)
+        self.model.fc = torch.nn.Linear(self.model.fc.in_features, 2*2)
         self.model.load_state_dict(torch.load('model_weights/best_model_noresize.pth', map_location=torch.device("cpu")))
     def predict(self, image):
         self.model.eval()
         transform = transforms.Compose([
-            transforms.toPILImage(),
+            transforms.ToPILImage(),
             transforms.Resize((224, 224)),
             transforms.ToTensor()])
         original_size = image.shape[:2]
@@ -50,8 +53,8 @@ class VisionModel():
         with torch.no_grad():
             image_transformed = image_transformed.unsqueeze(0) 
             output = self.model(image_transformed).cpu().detach().numpy().reshape(-1, 2)
-            output[:, 0] *= original_size[0] / 224
-            output[:, 1] *= original_size[1] / 224
+            output[:, 0] *= original_size[1] / 224
+            output[:, 1] *= original_size[0] / 224
         return output
     def crop_based_angle(self, image):
         self.model.eval()
@@ -65,9 +68,9 @@ class VisionModel():
         with torch.no_grad():
             image_transformed = image_transformed.unsqueeze(0) 
             output = self.model(image_transformed).cpu().detach().numpy().reshape(-1, 2)
-            output[:, 0] *= original_size[0] / 224
-            output[:, 1] *= original_size[1] / 224
-        (x1, y1), (x2, y2) = output[5], output[7]
+            output[:, 0] *= original_size[1] / 224
+            output[:, 1] *= original_size[0] / 224
+        (x1, y1), (x2, y2) = output[0], output[1]
         dx = x2 - x1
         dy = y2 - y1
         angle_rad = np.arctan2(dy, dx)
@@ -86,7 +89,7 @@ class VisionModel():
         rotated = cv2.warpAffine(img_np, M, (new_w, new_h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
 
         cropped = crop_largest_rect(rotated, angle_deg, w, h)
-        return cropped,output[5],output[7]
+        return cropped,output[0],output[1]
     def crop_post_process(self, image,baseline_1,baseline_2):
         original_size = image.shape[:2]
         h, w = original_size[0], original_size[1]
@@ -109,4 +112,27 @@ class VisionModel():
         rotated = cv2.warpAffine(img_np, M, (new_w, new_h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
 
         cropped = crop_largest_rect(rotated, angle_deg, w, h)
+        return cropped
+
+class VisionModel2():
+    def crop_based_angle(self, image):
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Determine angle using Radon transform
+        angle = determine_skew(gray)
+
+        # Rotate image using OpenCV
+        (h, w) = image.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        straightened = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+        cropped = crop_largest_rect(straightened, angle, w, h)
+        return cropped, angle
+    def crop_post_angle(self, image,angle):
+        # Rotate image using OpenCV
+        (h, w) = image.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        straightened = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+        cropped = crop_largest_rect(straightened, angle, w, h)
         return cropped

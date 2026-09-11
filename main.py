@@ -1,9 +1,9 @@
 import cv2
 from AVFoundation import AVCaptureDevice, AVMediaTypeVideo
-from visionmodel import VisionModel
-from PIL import Image
+from visionmodel import VisionModel,VisionModel2
 
 vision_model = VisionModel()
+vision_model2 = VisionModel2()
 
 def get_macos_camera_list():
     # Retrieve actual hardware video capture devices from AVFoundation
@@ -56,10 +56,10 @@ while True:
         break
     
     if not_image_normalized:
-        cropped,baseline_1,baseline_2 = vision_model.crop_based_angle(frame)
+        cropped,angle = vision_model2.crop_based_angle(frame)
         not_image_normalized = False
     else:
-        cropped = vision_model.crop_post_process(frame,baseline_1,baseline_2)
+        cropped = vision_model2.crop_post_angle(frame,angle)
     # Write the frame to the video file
     if out is None:
         crop_h, crop_w = cropped.shape[:2]
