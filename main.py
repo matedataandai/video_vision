@@ -9,6 +9,18 @@ import soundfile as sf
 import imageio_ffmpeg
 from AVFoundation import AVCaptureDevice, AVMediaTypeVideo
 from visionmodel import VisionModel2
+import cv2
+import os
+from dotenv import load_dotenv
+load_dotenv()
+# Replace with your camera details
+IP_ADDRESS = os.getenv("IP_ADDRESS")
+USERNAME = os.getenv("USERNAME")
+PASSWORD = os.getenv("PASSWORD")
+
+# Tapo RTSP stream URL structure (Standard definition stream usually works best)
+# For HD stream, change /stream1 to /stream2 (varies by model)
+rtsp_url = f"rtsp://{USERNAME}:{PASSWORD}@{IP_ADDRESS}:554/stream1"
 
 # ---------------------------------------------------------
 # Streamed Audio Recorder (Fixed RAM Usage)
@@ -44,11 +56,10 @@ def record_audio_to_file():
 # ---------------------------------------------------------
 vision_model2 = VisionModel2()
 
-SELECTED_CAMERA_INDEX = 0
-cap = cv2.VideoCapture(SELECTED_CAMERA_INDEX)
+cap = cv2.VideoCapture(rtsp_url)
 
 if not cap.isOpened():
-    print(f"Error: Could not open camera at index {SELECTED_CAMERA_INDEX}")
+    print("Error: Could not open video stream.")
     exit()
 
 fps = 30.0

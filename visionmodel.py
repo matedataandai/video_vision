@@ -30,6 +30,11 @@ def crop_largest_rect(img, angle_deg, orig_w, orig_h):
         crop_w = int((orig_w * cos - orig_h * sin) / cos2)
         crop_h = int((orig_h * cos - orig_w * sin) / cos2)
 
+    # Clamp to sane, positive dimensions so downstream cv2 calls (e.g. VideoWriter)
+    # never see a zero/negative frame size
+    crop_w = max(1, min(int(crop_w), orig_w))
+    crop_h = max(1, min(int(crop_h), orig_h))
+
     # Perform center crop
     h, w = img.shape[:2]
     start_x = max(0, (w - crop_w) // 2)
@@ -119,6 +124,10 @@ class VisionModel2():
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         # Determine angle using Radon transform
         angle = determine_skew(gray)
+        if angle is None:
+            # deskew couldn't confidently find an angle on this frame
+            # (flat lighting, low texture, etc.) - fall back to "no rotation"
+            angle = 0.0
         # Rotate image using OpenCV
         (h, w) = image.shape[:2]
         center = (w // 2, h // 2)
