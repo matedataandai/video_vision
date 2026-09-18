@@ -36,7 +36,7 @@ load_dotenv()
 
 SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN", "")
 SQUARE_LOCATION_ID = os.getenv("SQUARE_LOCATION_ID", "")
-SQUARE_ENVIRONMENT = os.getenv("SQUARE_ENVIRONMENT", "sandbox")  # sandbox | production
+SQUARE_ENVIRONMENT = os.getenv("SQUARE_ENVIRONMENT", "")  # sandbox | production
 
 BASE_URL = (
     "https://connect.squareupsandbox.com"
@@ -51,7 +51,7 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 POLL_INTERVAL_SECONDS = 3
-POLL_TIMEOUT_SECONDS = 300  # give up after 5 minutes
+POLL_TIMEOUT_SECONDS = 5  # give up after 5 minutes
 
 # ---------------------------------------------------------------------------
 # Square API helpers
@@ -107,98 +107,90 @@ class SquareAPI:
 # ---------------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------------
+def SquarePaymentUI(amount=10.00, description="Video recording for Court 1 at Tennis Club", currency="AUD"):
+    st.title("💳 One-Time Payment (Square)")
 
-st.set_page_config(page_title="Square Payment Demo", page_icon="💳")
-st.title("💳 One-Time Payment (Square)")
-
-if not SQUARE_ACCESS_TOKEN or not SQUARE_LOCATION_ID:
-    st.error(
-        "Missing SQUARE_ACCESS_TOKEN or SQUARE_LOCATION_ID environment variables. "
-        "Set them before running the app (see the docstring at the top of this file)."
-    )
-    st.stop()
-
-st.caption(f"Environment: **{SQUARE_ENVIRONMENT}**")
-
-# Keep the created payment link/order across reruns
-if "payment_link" not in st.session_state:
-    st.session_state.payment_link = None
-if "order_id" not in st.session_state:
-    st.session_state.order_id = None
-
-with st.form("payment_form"):
-    description = st.text_input("Description", value="Video recording for Court 1 at Tennis Club",disabled=True)
-    amount = st.number_input("Amount", value=10.00, format="%.2f",disabled=True)
-    currency = st.selectbox("Currency", ["AUD"],disabled=True)
-    submitted = st.form_submit_button("Create payment link")
-
-if submitted:
-    amount_cents = int(round(amount * 100))
-    try:
-        with st.spinner("Creating checkout link..."):
-            squareapi = SquareAPI(amount_cents, currency, description)
-            result = squareapi.create_payment_link()
-        link = result["payment_link"]
-        st.session_state.payment_link = link["url"]
-        st.session_state.payment_link_id = link["id"]
-        st.session_state.order_id = link["order_id"]
+    # Keep the created payment link/order across reruns
+    # Initialize persistent session state variables
+    if "payment_link" not in st.session_state:
+        st.session_state.payment_link = None
+    if "payment_link_id" not in st.session_state:
+        st.session_state.payment_link_id = None
+    if "order_id" not in st.session_state:
+        st.session_state.order_id = None
+    if "outcome" not in st.session_state:
         st.session_state.outcome = None
-        st.success("Payment link created.")
-    except requests.HTTPError as e:
-        st.error(f"Square API error: {e.response.status_code} - {e.response.text}")
-    except Exception as e:
-        st.error(f"Something went wrong: {e}")
+    if "payment_started" not in st.session_state:
+        st.session_state.payment_started = False
 
-if st.session_state.payment_link:
-    terminal = st.session_state.outcome in ("ACCEPTED", "DECLINED", "INVALIDATED")
+    with st.form("payment_form"):
+        st.text_input("Description", value=description, disabled=True)
+        st.number_input("Amount", value=amount, format="%.2f", disabled=True)
+        st.selectbox("Currency", [currency], disabled=True)
+        create_clicked = st.form_submit_button("Create payment link")
 
-    if not terminal or st.session_state.outcome == "ACCEPTED":
-        st.markdown("### Checkout")
-        st.link_button("Open Square Checkout ↗", st.session_state.payment_link)
-        st.code(st.session_state.payment_link, language=None)
-
-    st.markdown("### Payment status")
-
-    if st.session_state.outcome == "ACCEPTED":
-        st.success("✅ Payment accepted.")
-    elif st.session_state.outcome == "DECLINED":
-        st.error("❌ Payment declined / canceled.")
-    elif st.session_state.outcome == "INVALIDATED":
-        st.warning(
-            f"⏱️ No payment within {POLL_TIMEOUT_SECONDS}s — link deactivated. "
-            "It will no longer work if opened."
-        )
-
-    if st.button("Wait for payment result", disabled=terminal):
-        status_box = st.empty()
-        elapsed = 0
-        outcome = None
+    if create_clicked:
+        amount_cents = int(round(amount * 100))
         try:
-            while elapsed < POLL_TIMEOUT_SECONDS:
-                outcome = SquareAPI.get_tender_outcome(st.session_state.order_id)
-                if outcome is not None:
-                    break
-                status_box.info(f"Waiting for payment... ({elapsed}s elapsed)")
-                time.sleep(POLL_INTERVAL_SECONDS)
-                elapsed += POLL_INTERVAL_SECONDS
-
-            if outcome is not None:
-                status_box.empty()
-                st.session_state.outcome = outcome
-            else:
-                status_box.info("No payment received — deactivating link...")
-                try:
-                    SquareAPI.delete_payment_link(st.session_state.payment_link_id)
-                    st.session_state.outcome = "INVALIDATED"
-                except requests.HTTPError as e:
-                    st.error(
-                        f"Timed out, and failed to deactivate the link: "
-                        f"{e.response.status_code} - {e.response.text}"
-                    )
-                status_box.empty()
-            st.rerun()
+            with st.spinner("Creating checkout link..."):
+                squareapi = SquareAPI(amount_cents, currency, description)
+                result = squareapi.create_payment_link()
+            link = result["payment_link"]
+            st.session_state.payment_link = link["url"]
+            st.session_state.payment_link_id = link["id"]
+            st.session_state.order_id = link["order_id"]
+            st.session_state.outcome = None
+            st.session_state.payment_started = True
+            st.success("Payment link created.")
         except requests.HTTPError as e:
-            status_box.empty()
             st.error(f"Square API error: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            st.error(f"Something went wrong: {e}")
 
-st.divider()
+        if st.session_state.payment_link and st.session_state.outcome is None:
+            st.markdown("### Checkout")
+            st.link_button("Open Square Checkout ↗", st.session_state.payment_link)
+            st.code(st.session_state.payment_link, language=None)
+
+            st.markdown("### Payment status")
+
+            status_box = st.empty()
+            elapsed = 0
+            outcome = None
+            try:
+                while elapsed < POLL_TIMEOUT_SECONDS:
+                    outcome = SquareAPI.get_tender_outcome(st.session_state.order_id)
+                    if outcome is not None:
+                        break
+                    status_box.info(f"Waiting for payment... ({elapsed}s elapsed) - You have {POLL_TIMEOUT_SECONDS}s to make payment.")
+                    time.sleep(POLL_INTERVAL_SECONDS)
+                    elapsed += POLL_INTERVAL_SECONDS
+                if outcome is not None:
+                    status_box.empty()
+                    st.session_state.outcome = outcome
+                else:
+                    status_box.info("No payment received — deactivating link...")
+                    try:
+                        SquareAPI.delete_payment_link(st.session_state.payment_link_id)
+                        st.session_state.outcome = "INVALIDATED"
+                    except requests.HTTPError as e:
+                        st.error(
+                            f"Timed out, and failed to deactivate the link: "
+                            f"{e.response.status_code} - {e.response.text}"
+                        )
+                    status_box.empty()
+            except requests.HTTPError as e:
+                status_box.empty()
+                st.error(f"Square API error: {e.response.status_code} - {e.response.text}")
+        st.session_state.outcome = SquareAPI.get_tender_outcome(st.session_state.order_id)
+        if st.session_state.outcome == "ACCEPTED":
+            st.success("✅ Payment accepted.")
+        elif st.session_state.outcome == "DECLINED":
+            st.error("❌ Payment declined / canceled.")
+        elif st.session_state.outcome == "INVALIDATED":
+            st.warning(
+                f"⏱️ No payment within {POLL_TIMEOUT_SECONDS}s — link deactivated. "
+                "It will no longer work if opened."
+            )
+
+    st.divider()
