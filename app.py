@@ -2,7 +2,7 @@ import streamlit as st
 from cameras import VideoRecorder
 from payment import SquarePaymentUI
 
-st.set_page_config(page_title="Record session", layout="wide")
+st.set_page_config(page_title="Record session", layout="wide",page_icon="Logos.png")
 
 court_options = [
     "-- Select --",
@@ -31,3 +31,4 @@ if court != "-- Select --" and email:
         st.balloons()
 else:
     st.info("Please select a court and provide your email address to proceed to payment.")
+st.image("poweredbymatedata.png", width=400)

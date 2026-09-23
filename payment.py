@@ -91,7 +91,7 @@ class SquareAPI:
     @staticmethod
     def get_tender_outcome(order_id: str) -> str | None:
         state, tenders = SquareAPI.get_order_state(order_id)
-        if state == "COMPLETED" and tenders:
+        if tenders:
             return "ACCEPTED"
         if state == "CANCELED":
             return "DECLINED"

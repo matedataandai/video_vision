@@ -186,6 +186,7 @@ class VideoRecorder():
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
                 "-c:a", "aac",
+                "-movflags +faststart",
                 "-b:a", "192k",
                 "-shortest",
                 final_output_path
