@@ -24,7 +24,14 @@ class VideoRecorder():
         self.IP_ADDRESS = os.getenv("IP_ADDRESS")
         self.USERNAME = os.getenv("USERNAME")
         self.PASSWORD = os.getenv("PASSWORD")
-        self.uuid = str(uuid.uuid4()) 
+        self.uuid = str(uuid.uuid4())
+    def test_camera(self):
+        rtsp_url = f"rtsp://{self.USERNAME}:{self.PASSWORD}@{self.IP_ADDRESS}:554/stream1"
+        cap = cv2.VideoCapture(rtsp_url)
+        if not cap.isOpened():
+            return "NOT LIVE"
+        else:
+            return "LIVE"
     def start_recording(self):
         # Tapo RTSP stream URL structure (Standard definition stream usually works best)
         # For HD stream, change /stream1 to /stream2 (varies by model)
