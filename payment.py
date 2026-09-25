@@ -1,27 +1,3 @@
-"""
-Streamlit app: one-time payments via Square (Payment Links / Checkout API)
-
-Why this approach:
-Square (like most processors) doesn't let raw card numbers touch your server -
-that would put you in full PCI-DSS scope. Instead, this app calls Square's
-Payment Links API to generate a secure, Square-hosted checkout page. The
-customer enters their card there; your app just creates the link and later
-checks whether the resulting order was paid.
-
-Setup
------
-1. pip install streamlit requests python-dotenv
-2. Get credentials from https://developer.squareup.com/apps
-   - Sandbox Access Token (for testing) or Production Access Token
-   - Location ID (Sandbox test account comes with one; find it under
-     "Locations" in the dashboard, or via GET /v2/locations)
-3. Set environment variables (or use a .env file with python-dotenv):
-     SQUARE_ACCESS_TOKEN=EAAA...
-     SQUARE_LOCATION_ID=L...
-     SQUARE_ENVIRONMENT=sandbox      # or "production"
-4. Run: streamlit run square_payment_app.py
-"""
-
 import os
 import time
 import uuid

@@ -23,7 +23,7 @@ Your booking details:
 - Duration: {duration}
 - Unique service: {unique_id}
 
-You can watch your video at https://localhost:8501/?v={unique_id}
+You can watch your video at localhost:8501/?v={unique_id}
 
 Feel free to reach out to us at 0406292441 or reply to this email if you have any questions or need further assistance.
 

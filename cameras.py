@@ -9,6 +9,7 @@ import soundfile as sf
 import imageio_ffmpeg
 from AVFoundation import AVCaptureDevice, AVMediaTypeVideo
 from visionmodel import VisionModel2
+from email_sender import EmailSender
 import cv2
 import os
 import uuid
@@ -185,18 +186,28 @@ class VideoRecorder():
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
             initial_delay = max(0.0, video_start_time - audio_start_time)
             cmd = [
-                ffmpeg_exe, "-y",
-                "-ss", f"{initial_delay:.3f}",   # Trim initial start delay
-                "-i", temp_audio_path,
-                "-r", str(actual_fps),          # Dynamic FPS calculation for sync over long sessions
-                "-i", temp_video_path,
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                "-movflags +faststart",
-                "-b:a", "192k",
+                ffmpeg_exe,
+                "-y",
+                "-ss",
+                f"{initial_delay:.3f}",  # Trim initial start delay
+                "-i",
+                temp_audio_path,
+                "-r",
+                str(actual_fps),  # Dynamic FPS calculation for sync over long sessions
+                "-i",
+                temp_video_path,
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",  # <--- Fixed: Split into two separate elements
+                "-b:a",
+                "192k",
                 "-shortest",
-                final_output_path
+                final_output_path,
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
@@ -205,6 +216,7 @@ class VideoRecorder():
                     os.remove(temp_video_path)
                 if os.path.exists(temp_audio_path):
                     os.remove(temp_audio_path)
+                EmailSender().send_email(receiver_email=self.email,court=self.court,unique_id=self.uuid,amount=10/60*self.duration,duration=self.duration)
             else:
                 print("FFmpeg merge error:")
                 print(result.stderr)
