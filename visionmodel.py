@@ -1,10 +1,8 @@
-from email.mime import image
 import numpy as np
 import torch
 import torchvision.models as models
 from torchvision import transforms
 import numpy as np
-from PIL import Image
 import cv2
 from deskew import determine_skew
 
@@ -68,37 +66,37 @@ class VisionModel2():
         cropped = crop_largest_rect(straightened, angle, w, h)
         return cropped
 
-    def detect_court_line_segments(self,bgr_img: np.ndarray):
-      # 1. Smooth slightly to suppress surface grain while keeping crisp line edges
-      blurred = cv2.GaussianBlur(bgr_img, (5, 5), 0)
+class CourtLineDetector:
+    def __init__(self, model_path):
+        self.model = models.resnet50(pretrained=True)
+        self.model.fc = torch.nn.Linear(self.model.fc.in_features, 14*2) 
+        self.model.load_state_dict(torch.load(model_path, map_location='cpu'))
+        self.transform = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
-      # 2. Extract bright line candidates in HSV (low saturation, high brightness)
-      hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
-      white_mask = cv2.inRange(hsv, np.array([0, 0, 180]), np.array([180, 65, 255]))
+    def predict(self, image):
 
-      # Morphologically close small gaps caused by surface texture or shadows
-      kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-      white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_CLOSE, kernel)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image_tensor = self.transform(image_rgb).unsqueeze(0)
+        with torch.no_grad():
+            outputs = self.model(image_tensor)
+        keypoints = outputs.squeeze().cpu().numpy()
+        original_h, original_w = image.shape[:2]
+        keypoints[::2] *= original_w / 224.0
+        keypoints[1::2] *= original_h / 224.0
 
-      # 3. Edge detection + Probabilistic Hough Transform
-      edges = cv2.Canny(white_mask, 50, 150, apertureSize=3)
-      lines = cv2.HoughLinesP(
-          edges,
-          rho=1,
-          theta=np.pi / 180,
-          threshold=80,
-          minLineLength=60,
-          maxLineGap=25,
-      )
-      return lines if lines is not None else np.empty((0, 1, 4), dtype=np.int32)
+        return keypoints
 
-    def overlay_court_lines(self,img,lines,color=(0, 255, 0),thickness=3,return_pil: bool = True):
-        canvas = img.copy()
-        for seg in lines:
-          x1, y1, x2, y2 = map(int, seg.reshape(4))
-          cv2.line(canvas, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
-
-        if return_pil:
-          rgb_out = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
-          return Image.fromarray(rgb_out)
-        return canvas
+    def draw_keypoints(self, image, keypoints):
+        # Plot keypoints on the image
+        for i in range(0, len(keypoints), 2):
+            x = int(keypoints[i])
+            y = int(keypoints[i+1])
+            cv2.putText(image, str(i//2), (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            cv2.circle(image, (x, y), 5, (0, 0, 255), -1)
+        return image
+    
