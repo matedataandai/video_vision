@@ -1,9 +1,10 @@
 from email.mime import image
-
+import numpy as np
 import torch
 import torchvision.models as models
 from torchvision import transforms
 import numpy as np
+from PIL import Image
 import cv2
 from deskew import determine_skew
 
@@ -42,83 +43,6 @@ def crop_largest_rect(img, angle_deg, orig_w, orig_h):
     
     return img[start_y:start_y + crop_h, start_x:start_x + crop_w]
 
-class VisionModel():
-    def __init__(self):
-        self.model = models.resnet50(pretrained=True)
-        self.model.fc = torch.nn.Linear(self.model.fc.in_features, 2*2)
-        self.model.load_state_dict(torch.load('model_weights/best_model_noresize.pth', map_location=torch.device("cpu")))
-    def predict(self, image):
-        self.model.eval()
-        transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize((224, 224)),
-            transforms.ToTensor()])
-        original_size = image.shape[:2]
-        image_transformed = transform(image)
-        with torch.no_grad():
-            image_transformed = image_transformed.unsqueeze(0) 
-            output = self.model(image_transformed).cpu().detach().numpy().reshape(-1, 2)
-            output[:, 0] *= original_size[1] / 224
-            output[:, 1] *= original_size[0] / 224
-        return output
-    def crop_based_angle(self, image):
-        self.model.eval()
-        transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize((224, 224)),
-            transforms.ToTensor()])
-        original_size = image.shape[:2]
-        h, w = original_size[0], original_size[1]
-        image_transformed = transform(image)
-        with torch.no_grad():
-            image_transformed = image_transformed.unsqueeze(0) 
-            output = self.model(image_transformed).cpu().detach().numpy().reshape(-1, 2)
-            output[:, 0] *= original_size[1] / 224
-            output[:, 1] *= original_size[0] / 224
-        (x1, y1), (x2, y2) = output[0], output[1]
-        dx = x2 - x1
-        dy = y2 - y1
-        angle_rad = np.arctan2(dy, dx)
-        angle_deg = np.degrees(angle_rad)
-
-        cos = np.abs(np.cos(angle_rad))
-        sin = np.abs(np.sin(angle_rad))
-
-        new_w = int((h * sin) + (w * cos))
-        new_h = int((h * cos) + (w * sin))
-        center = (w / 2, h / 2)
-        M = cv2.getRotationMatrix2D(center, angle_deg, 1.0)
-        M[0, 2] += (new_w / 2) - center[0]
-        M[1, 2] += (new_h / 2) - center[1]
-        img_np = np.array(image)
-        rotated = cv2.warpAffine(img_np, M, (new_w, new_h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
-
-        cropped = crop_largest_rect(rotated, angle_deg, w, h)
-        return cropped,output[0],output[1]
-    def crop_post_process(self, image,baseline_1,baseline_2):
-        original_size = image.shape[:2]
-        h, w = original_size[0], original_size[1]
-        (x1, y1), (x2, y2) = baseline_1, baseline_2
-        dx = x2 - x1
-        dy = y2 - y1
-        angle_rad = np.arctan2(dy, dx)
-        angle_deg = np.degrees(angle_rad)
-
-        cos = np.abs(np.cos(angle_rad))
-        sin = np.abs(np.sin(angle_rad))
-
-        new_w = int((h * sin) + (w * cos))
-        new_h = int((h * cos) + (w * sin))
-        center = (w / 2, h / 2)
-        M = cv2.getRotationMatrix2D(center, angle_deg, 1.0)
-        M[0, 2] += (new_w / 2) - center[0]
-        M[1, 2] += (new_h / 2) - center[1]
-        img_np = np.array(image)
-        rotated = cv2.warpAffine(img_np, M, (new_w, new_h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
-
-        cropped = crop_largest_rect(rotated, angle_deg, w, h)
-        return cropped
-
 class VisionModel2():
     def crop_based_angle(self, image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -143,3 +67,38 @@ class VisionModel2():
         straightened = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
         cropped = crop_largest_rect(straightened, angle, w, h)
         return cropped
+
+    def detect_court_line_segments(self,bgr_img: np.ndarray):
+      # 1. Smooth slightly to suppress surface grain while keeping crisp line edges
+      blurred = cv2.GaussianBlur(bgr_img, (5, 5), 0)
+
+      # 2. Extract bright line candidates in HSV (low saturation, high brightness)
+      hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+      white_mask = cv2.inRange(hsv, np.array([0, 0, 180]), np.array([180, 65, 255]))
+
+      # Morphologically close small gaps caused by surface texture or shadows
+      kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+      white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_CLOSE, kernel)
+
+      # 3. Edge detection + Probabilistic Hough Transform
+      edges = cv2.Canny(white_mask, 50, 150, apertureSize=3)
+      lines = cv2.HoughLinesP(
+          edges,
+          rho=1,
+          theta=np.pi / 180,
+          threshold=80,
+          minLineLength=60,
+          maxLineGap=25,
+      )
+      return lines if lines is not None else np.empty((0, 1, 4), dtype=np.int32)
+
+    def overlay_court_lines(self,img,lines,color=(0, 255, 0),thickness=3,return_pil: bool = True):
+        canvas = img.copy()
+        for seg in lines:
+          x1, y1, x2, y2 = map(int, seg.reshape(4))
+          cv2.line(canvas, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
+
+        if return_pil:
+          rgb_out = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+          return Image.fromarray(rgb_out)
+        return canvas
