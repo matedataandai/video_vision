@@ -3,6 +3,7 @@ import torch
 import torchvision.models as models
 from torchvision import transforms
 import numpy as np
+from ultralytics import YOLO
 import cv2
 from deskew import determine_skew
 
@@ -91,12 +92,17 @@ class CourtLineDetector:
 
         return keypoints
 
-    def draw_keypoints(self, image, keypoints):
-        # Plot keypoints on the image
-        for i in range(0, len(keypoints), 2):
-            x = int(keypoints[i])
-            y = int(keypoints[i+1])
-            cv2.putText(image, str(i//2), (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-            cv2.circle(image, (x, y), 5, (0, 0, 255), -1)
-        return image
-    
+class PlayerDetector:
+    def __init__(self):
+        self.model_name = 'yolo11n.pt'
+        self.detector = YOLO(self.model_name)
+
+    def predict(self, image):
+        results = self.detector.predict(image)
+        player_shoes = []
+        for result in results:
+            for box in result.boxes.xyxy:
+                x1, y1, x2, y2 = box.cpu()
+                player_shoes.append(((x1+x2)/2,y2))
+        return player_shoes
+        

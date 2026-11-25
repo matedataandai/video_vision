@@ -20,5 +20,6 @@ dependencies = [
     "streamlit>=1.63.0",
     "torch>=2.14.0",
     "torchvision>=0.29.0",
+    "ultralytics>=8.4.218",
     "uuid>=1.30",
 ]

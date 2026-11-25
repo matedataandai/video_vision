@@ -8,7 +8,7 @@ import sounddevice as sd
 import soundfile as sf
 import imageio_ffmpeg
 from AVFoundation import AVCaptureDevice, AVMediaTypeVideo
-from visionmodel import VisionModel2
+from visionmodel import VisionModel2,CourtLineDetector
 from email_sender import EmailSender
 import cv2
 import os
@@ -67,6 +67,7 @@ class VideoRecorder():
         # OpenCV & Vision Model Setup
         # ---------------------------------------------------------
         vision_model2 = VisionModel2()
+        court_line_detector = CourtLineDetector(model_path="court_line_model.pth")
         cap = cv2.VideoCapture(rtsp_url)
         if not cap.isOpened():
             print("Error: Could not open video stream.")
@@ -88,6 +89,7 @@ class VideoRecorder():
             except cv2.error:
                 pass
         not_image_normalized = True
+        court_not_detected = True
         out = None 
         angle = 0
         video_start_time = None
@@ -135,7 +137,11 @@ class VideoRecorder():
                         print("Error: Vision model failed too many times in a row. Stopping recording.")
                         break
                     continue
-
+                try:
+                    if court_not_detected:
+                        key_points = court_line_detector.detect_court_lines(cropped)
+                except Exception as e:
+                    print(f"Warning: court line detection failed on this frame: {e}")            
                 # Validate the crop before trusting its dimensions
                 if cropped is None or cropped.size == 0 or cropped.shape[0] <= 0 or cropped.shape[1] <= 0:
                     vision_failures += 1
@@ -147,6 +153,7 @@ class VideoRecorder():
 
                 vision_failures = 0
                 not_image_normalized = False
+                court_not_detected = False
 
                 try:
                     if out is None:
