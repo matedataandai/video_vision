@@ -8,11 +8,13 @@ import sounddevice as sd
 import soundfile as sf
 import imageio_ffmpeg
 from AVFoundation import AVCaptureDevice, AVMediaTypeVideo
-from visionmodel import VisionModel2,CourtLineDetector
+from visionmodel import VisionModel2,CourtLineDetector,PlayerDetector
 from email_sender import EmailSender
+import numpy as np
 import cv2
 import os
 import uuid
+from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -67,7 +69,14 @@ class VideoRecorder():
         # OpenCV & Vision Model Setup
         # ---------------------------------------------------------
         vision_model2 = VisionModel2()
-        court_line_detector = CourtLineDetector(model_path="court_line_model.pth")
+        court_line_detector = CourtLineDetector()
+        player_detector = PlayerDetector()
+        path = Path("positions.bin")
+        path.unlink(missing_ok=True)
+        path.touch() 
+        path = Path("keypoints.bin")
+        path.unlink(missing_ok=True)
+        path.touch() 
         cap = cv2.VideoCapture(rtsp_url)
         if not cap.isOpened():
             print("Error: Could not open video stream.")
@@ -99,6 +108,8 @@ class VideoRecorder():
         max_consecutive_failures = 30  # ~1 sec of dropped frames at 30fps before we give up
         vision_failures = 0
         max_vision_failures = 30  # give up if the vision model can't get a usable crop for ~1 sec straight
+        p = open("positions.bin", "wb")
+        k = open("keypoints.bin", "wb") 
         try:
             while True:
                 try:
@@ -139,9 +150,13 @@ class VideoRecorder():
                     continue
                 try:
                     if court_not_detected:
-                        key_points = court_line_detector.detect_court_lines(cropped)
+                        key_points = court_line_detector.predict(cropped)
+                        np.array(key_points, dtype=np.float32).tofile(k)
                 except Exception as e:
-                    print(f"Warning: court line detection failed on this frame: {e}")            
+                    print(f"Warning: court line detection failed on this frame: {e}")
+               
+                player_positions = player_detector.predict(cropped)
+                np.array(player_positions, dtype=np.float32).tofile(p)
                 # Validate the crop before trusting its dimensions
                 if cropped is None or cropped.size == 0 or cropped.shape[0] <= 0 or cropped.shape[1] <= 0:
                     vision_failures += 1
